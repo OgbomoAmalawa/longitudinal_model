@@ -1,0 +1,598 @@
+
+
+```{r setup, include=FALSE}
+# packages to be installed 
+install_and_load_packages <- function() {
+  # List of packages to be installed and loaded
+  packages <- c(
+    "labelled",
+    "rstatix",
+    "purrr",
+    "ggpubr",
+    "GGally",
+    "Boruta",
+    "glmnet", 
+    "car",
+    "Epi",
+    "lme4",
+    "lmerTest",
+    "emmeans",
+    "multcomp",
+    "geepack",
+    "ggeffects",
+    "gt",
+    "readxl",
+    "data.table",
+    "tidyverse",
+    "summarytools",
+    "ggplot2",
+    "dplyr",
+    "lubridate",
+    "readr",
+    "stringr",
+    "tibble",
+    "naniar",
+    "NHANES",
+    "forcats",
+    "moments",
+    "performance"
+  )
+  library(lme4)
+  library(lmerTest)
+  library(performance)
+  library(ggplot2)
+  # Install packages that are not already installed
+  installed_packages <- installed.packages()
+  for (pkg in packages) {
+    if (!(pkg %in% installed_packages[, "Package"])) {
+      install.packages(pkg)
+    }
+  }
+  
+  # Load all the packages
+  lapply(packages, library, character.only = TRUE)
+}
+
+# Run the function to install and load all packages
+#Relevant libraries for use in this data 
+library(labelled)   # This is used to labeling data
+library(rstatix)    # This is used for summary statistics
+library(ggpubr)     # This is used for convenient summary statistics and plots
+library(GGally)     # This is used for advanced plot
+library(car)        # This is used for useful for anova/wald test
+library(Epi)        # This is used for easy getting CI for model coef/pred
+library(lme4)       # This is used for linear mixed-effects models
+library(lmerTest)   # This is used for test for linear mixed-effects models
+library(emmeans)    # This is used for marginal means
+library(multcomp)   # This is used for CI for linear combinations of model coef
+library(geepack)    # This is used for generalized estimating equations
+library(ggeffects)  # This is used for marginal effects, adjusted predictions
+library(gt)         # This is used for nice tables
+library(readxl)     # This is used for reading Excel files
+library(data.table) # This is used for fast data manipulation
+library(tidyverse)  # for data manipulation and visualization
+library(summarytools) # This is used for detailed summary statistics
+library(ggplot2)    # This is used for data visualization
+library(dplyr)      #This is used  for data manipulation
+library(lubridate)  # This is used for date-time manipulation
+library(readr)      # This is used for reading data
+library(stringr)    # This is used for string manipulation
+library(tibble)     # This is used for modern data frames
+library(naniar)     # This is used for handling missing data
+library(NHANES)     # This is used for accessing NHANES data
+library(forcats)    # This is used for working with categorical variables
+library(glmnet)
+library(moments)
+library(Boruta)
+library(purrr)
+#install.packages('tinytex')
+#tinytex::install_tinytex()
+
+```
+
+# Step 1
+# This is the importation of the "longi_new_data" big dataframe in the last analysis into this work because that is the last step before the data is converted Into the longitudinal format. Here we have to consider all the partitions within the dataframe we will name them now and in the course of this modeling we might consider new partitions directly or by grouping when nessesary. 
+# First the three major dataframe is imported which are difference in days, binary_df which are subset of the main dataframe longi_new_data
+# We have already identified the Response variable, therefore we can subset the Response from the main dataframe which is the longi_new_data to arrive at the X variables which are binary_df, difference_in_days , the interventions and the patient data, so if we remove the Response , binary_df, difference_in_days from the longi_new_data we arrive at a dataframe that is the interventions and the patient demograpics , in understanding how this model work we might at some point work our way back to the interventions and the patients demographic to see how the changes we make her will impact the model. 
+```{r}
+longi_new_data<-read.csv("D:/mimiproject/longi_new_data.csv", header = TRUE, stringsAsFactors = FALSE)
+difference_in_days<-read.csv("D:/mimiproject/difference_in_days.csv", header = TRUE, stringsAsFactors = FALSE)
+binary_df<-read.csv("D:/mimiproject/binary_df.csv", header = TRUE, stringsAsFactors = FALSE)
+# 
+```
+
+
+```{r}
+longi_new_data
+difference_in_days
+binary_df
+```
+
+
+```{r}
+# Assuming longi_new_data is a list-like object containing binary_df and other dataframes
+
+# Step 1: Identify rows where all values in binary_df are 1
+#rows_to_keep <- apply(binary_df, 1, function(row) all(row == 1))
+
+# Step 2: Filter longi_new_data based on rows_to_keep
+#longi_new_data_filtered <- longi_new_data %>%
+# map(~ .x[rows_to_keep, ])
+
+# Verify the filtered data
+#names(longi_new_data_filtered) # Check the structure of the filtered data
+
+
+# Another  sub step within the first part is to do a selection of some of the key partition in this data, identify and convert them to the long format.
+# Our Partition of interest is the Response variables and the mean response variable , which is within the biger dataframe long_new,
+# We will consider this variable as the Y which is been measured as a result of the  X but within the X variable we will partion again to examine 
+# whether there are interventions, durations and patients because what we know is that modelling this factors together together can result in a model that we can fit to measure the change over time. 
+
+# Here we are going to subset the Y variables which is the Response 
+```
+
+
+```{r}
+
+# We set what we know as the Response variables and sebset them from the main data
+response_columns<- c("DEJONGscore", "DEJONG_FUp1_Score", "DEJONG_FUp2_Score", 
+                     "DEJONG_FUp3_Score", "DEJONG_FUp4_Score", "DEJONG_FUp5_Score",
+                     "UCLA1Average", "UCLA_Fup1_Average", "UCLA_FUp2_Average", 
+                     "UCLA_FUp3_Average", "UCLA_FUp4_Average", "UCLA_FUp5_Average",
+                     "EQVASScore", "EQVAS_FUp1_score", "EQVAS_FUp2_score", 
+                     "EQVAS_FUp3_score", "EQVAS_FUp4_score", "EQVAS_FUp5_score",
+                     "SWEMWBSScore", "SWEMWBS_FUp1_score_num", "SWEMWBS_FUp2_score_num", 
+                     "SWEMWBS_FUp3_score_num", "SWEMWBS_FUp4_score_num", "SWEMWBS_FUp5_score_num")
+
+# Subset the data frame
+Response <- longi_new_data %>% select(all_of(response_columns))
+
+# View the subsetted data frame
+print(Response)
+```
+
+# There are four coumns within the Y  therefore the mean response of each of the column or variable is identified from the dataset 
+#  
+```{r}
+# We set what we know as the Response variables and sebset them from the main data
+mean_response_columns<- c("DEJONGscore","UCLA1Average","EQVASScore","SWEMWBSScore")
+
+# Subset the data frame
+mean_response<- longi_new_data %>% select(all_of(mean_response_columns))
+
+# View the subsetted data frame
+print(mean_response)
+```
+
+```{r}
+# Reshape data from wide to long format
+Response_long_data <- Response %>%
+  pivot_longer(
+    cols = everything(), # Convert all columns
+    names_to = "Measurement",
+    values_to = "Score"
+  ) %>%
+  mutate(
+    Year = case_when(
+      str_detect(Measurement, "FUp1|Fup1") ~ "Year 1",
+      str_detect(Measurement, "FUp2|Fup2") ~ "Year 2",
+      str_detect(Measurement, "FUp3|Fup3") ~ "Year 3",
+      str_detect(Measurement, "FUp4|Fup4") ~ "Year 4",
+      str_detect(Measurement, "FUp5|Fup5") ~ "Year 5",
+      TRUE ~ "Baseline"  # Default to Baseline if no FUp pattern matched
+    )
+  )
+
+# View reshaped data
+print(Response_long_data)
+```
+# Response = Patients + Duration + Interventions 
+# There could be covariates or cofactors within that influence the interventions 
+# longi_new_data,difference_in_days, binary_df, Response
+# Patient + Intervention = longi_new_data - (difference_in_days + binary_df + Response)
+# We rename Patient + Intervention as PI_data
+# therefore Y = Response variable and X = PI_data + difference_in_days + binary_df , or X= longi_new_data-Response
+
+
+```{r}
+#Patient + Intervention = longi_new_data - (difference_in_days + binary_df + Response)
+
+# Remove the selected columns from the original dataframe
+# Corrected code
+# Assuming difference_in_days, binary_df, and Response are already loaded as dataframes
+
+# Extract column names from the three dataframes
+columns_to_remove <- c(names(difference_in_days), names(binary_df), names(Response))
+
+# Remove these columns from longi_new_data
+PI_data <- longi_new_data %>%
+  select(-all_of(columns_to_remove))
+
+# Check the structure of the updated PI_data
+str(PI_data)
+
+# Check the new dataframe
+head(PI_data)
+
+```
+# How to choose a model in Longitudinal data Machine learing, the first thing to do is to undertand the Response variable, 
+# We have to find out if this data violates the model assumptions 
+# we have to understand if the response variable which is mutivarate in this situation is correlated to one another,
+# We have to verify if what type of data is in the response variable , we have to find out if it is a combination of categorical and numerical type of data in the response variable. 
+# To choose a model we can use any of the following in different situations 
+# lme4 is used for numerical contineous outcomes
+# geepack for GEE or lme4 with a binomial family is used for binary classification outcome
+# while mmm package is used for outcome that have contineous and categorical we can say mixed outcome but in situation where we have a complex hierarchical structure we make use of MCMCglmm model
+
+
+```{r}
+# we find out about the Response variable to understand why variables are present in the response variable, we use code and visualization to acheive this 
+sapply(Response, class)
+# We have all as interger except one of the response "SWEMWBSScore" which is numeric variable, therefore we can consider all Response variable as numeric variable but we will conver this distribution in a visualization.
+```
+
+
+```{r}
+# Assuming your response dataframe is named `Response`
+# Identify columns that are numeric or integer
+numeric_columns <- sapply(Response, function(x) is.numeric(x) || is.integer(x))
+
+# Filter the dataframe to keep only numeric and integer columns
+numeric_df <- Response[, numeric_columns]
+
+# Plot histograms for each numeric and integer column
+for (col_name in names(numeric_df)) {
+  p <- ggplot(numeric_df, aes_string(x = col_name)) +
+    geom_histogram(binwidth = 5, fill = "blue", color = "black") +
+    labs(title = paste("Histogram of", col_name), x = col_name, y = "Count") +
+    theme_minimal()
+  
+  print(p)  # Correctly print the plot inside the loop
+}
+
+```
+```{r}
+longi_new_data 
+Response
+```
+
+
+
+```{r}
+
+# Convert character variables to factors
+longi_new_data <- longi_new_data %>%
+  mutate(across(where(is.character), as.factor))
+
+# Convert logical variables to numeric (TRUE becomes 1, FALSE becomes 0)
+longi_new_data <- longi_new_data %>%
+  mutate(across(where(is.logical), as.numeric))
+
+# Convert integer variables to numeric (if necessary)
+longi_new_data <- longi_new_data %>%
+  mutate(across(where(is.integer), as.numeric))
+
+# Convert factor variables to numeric (be cautious with this, ensure it's what you want)
+longi_new_data <- longi_new_data %>%
+  mutate(across(where(is.factor), ~ as.numeric(as.factor(.))))
+
+# Check the structure to confirm all variables are now numeric
+str(longi_new_data)
+```
+
+
+
+```{r}
+
+# Check the class of each column in the data frame
+variable_classes <- sapply(longi_new_data, class)
+
+# Convert the result to a data frame for better readability
+variable_classes_df <- as.data.frame(table(variable_classes))
+
+# Rename the columns for clarity
+colnames(variable_classes_df) <- c("Variable_Type", "Count")
+
+# Display the result
+print(variable_classes_df)
+
+```
+
+```{r}
+
+# Check for the total number of missing values in the entire dataset
+total_missing <- sum(is.na(longi_new_data))
+print(paste("Total number of missing values:", total_missing))
+
+
+# Check for the number of missing values in each column
+missing_by_column <- colSums(is.na(longi_new_data))
+
+# Print missing values by column
+print("Missing values by column:")
+print(missing_by_column)
+
+```
+
+
+```{r}
+# Create a summary of missing values
+missing_summary <- data.frame(
+  Column = names(longi_new_data),
+  MissingValues = colSums(is.na(longi_new_data)),
+  MissingPercentage = colSums(is.na(longi_new_data)) / nrow(longi_new_data) * 100
+)
+
+# Filter to show only columns with missing values
+missing_summary <- missing_summary %>%
+  filter(MissingValues > 0) %>%
+  arrange(desc(MissingValues))
+
+# Print the summary
+print(missing_summary)
+
+```
+
+
+```{r}
+PI_data
+colnames(PI_data)
+```
+
+
+
+```{r}
+# Clean column names
+colnames(PI_data) <- make.names(colnames(PI_data))
+# Loop through each column and plot a bar chart
+for (col_name in colnames(PI_data)) {
+  # Convert column to factor if it's not already
+  if (!is.factor(PI_data[[col_name]])) {
+    PI_data[[col_name]] <- as.factor(PI_data[[col_name]])
+  }
+  #############
+  # Create a bar chart for the current column
+  p <- ggplot(PI_data, aes_string(x = col_name)) +
+    geom_bar() +
+    ggtitle(paste("Bar Chart of", col_name)) +
+    xlab(col_name) +
+    ylab("Count")
+  
+  # Print the plot
+  print(p)
+}
+
+```
+
+
+
+
+
+
+```{r}
+# Assuming PI_data is your dataframe
+
+# Step 1: Identify intervention columns
+intervention_patterns <- c("FUp\\d", "^P\\d", "FollowUp\\d")
+
+# Create a regular expression that matches any of the patterns
+intervention_regex <- paste(intervention_patterns, collapse = "|")
+
+# Identify intervention columns
+intervention_columns <- grep(intervention_regex, names(PI_data), value = TRUE)
+
+# Identify patient columns (those not matching the intervention patterns)
+patient_columns <- setdiff(names(PI_data), intervention_columns)
+
+# Step 2: Split the PI_data into intervention and patient dataframes
+intervention_df <- PI_data %>%
+  select(intervention_columns)
+
+patient_df <- PI_data %>%
+  select(patient_columns)
+
+# Display the column names of the resulting dataframes to verify the split
+cat("Intervention Columns:\n")
+print(names(intervention_df))
+
+cat("\nPatient Columns:\n")
+print(names(patient_df))
+
+```
+
+
+```{r}
+binary_df
+difference_in_days
+intervention_df
+Response
+longi_new_data
+```
+
+
+
+
+```{r}
+
+columns_to_drop <- c("DEJONGscore", "UCLA1Average", "EQVASScore", "SWEMWBS_FUp2_score_num")
+
+
+longi_new_data <-longi_new_data[, !(names(longi_new_data) %in% columns_to_drop)]
+
+
+print(longi_new_data)
+
+```
+
+
+
+
+
+
+
+```{r}
+# Number of follow-ups per subject (change if necessary)
+n_followups <- 5
+
+# Create a unique ID for each subject based on the number of follow-ups
+longi_new_data <- longi_new_data %>%
+  mutate(ID = rep(1:(nrow(.) / n_followups), each = n_followups))
+
+```
+
+
+
+```{r}
+# Reshape the columns to long format based on the follow-up year pattern
+longi_reshape <- longi_new_data %>%
+  pivot_longer(
+    cols = DEJONG_FUp1_Score:SWEMWBS_FUp5_score_num,
+    names_to = "Scoretime",
+    values_to = "Score"
+  )
+
+```
+
+
+```{r}
+colnames(longi_reshape)
+longi_reshape$Scoretime
+```
+
+
+```{r}
+longi_reshape$Scoretime
+longi_reshape$Score
+```
+
+```{r}
+# Extract follow-up year from the 'Scoretime' column (if needed)
+longi_reshape <- longi_reshape %>%
+  mutate(Year = case_when(
+    grepl("FUp1", Scoretime) ~ 1,
+    grepl("FUp2", Scoretime) ~ 2,
+    grepl("FUp3", Scoretime) ~ 3,
+    grepl("FUp4", Scoretime) ~ 4,
+    grepl("FUp5", Scoretime) ~ 5
+  ))
+
+```
+
+```{r}
+# Extract follow-up year from the 'Scoretime' column (if needed)
+longi_reshape$Year
+```
+
+```{r}
+# View the first few rows
+head(longi_reshape)
+
+```
+
+```{r}
+# build a Simple linear regression model 
+simple_model <- lm(Score ~ Year, data = longi_reshape)
+summary(simple_model)
+```
+
+# estimated Score when Year is 0 is 25.4770  which might represent the baseline score for the follow up year
+# Year -0.9466, means for each succesive year the score should decline by Year 0.9466
+# the Residualfrom -24.53 to 79.26 means there are some variability the model does not fully capture. 
+#we proceed to check some assumption of the model
+
+
+```{r}
+# Check assumptions for the simple model
+par(mfrow=c(2,2))
+plot(simple_model)
+```
+
+```{r}
+# proceed with mixed effect model 
+```
+
+
+
+
+```{r}
+
+# Fit the mixed-effects model 
+# Linear mixed-effects model
+mixed_model <- lmer(Score ~ Year + (1 | ID), data = longi_reshape)
+summary(mixed_model)
+
+```
+```{r}
+# Compare models using AIC
+AIC(simple_model, mixed_model)
+
+# Check assumptions for mixed-effects model
+par(mfrow=c(1,1))
+qqnorm(residuals(mixed_model))
+qqline(residuals(mixed_model))
+
+plot(fitted(mixed_model), residuals(mixed_model))
+abline(h = 0, col = "red")
+
+```
+
+
+```{r}
+library(lme4)
+#Fit a Mixed-Effects Model for Year 1 to Year 5
+# Ensure 'Year' is treated as a factor (categorical variable)
+longi_reshape$Year <- factor(longi_reshape$Year, levels = 1:5)
+
+# Fit a mixed-effects model with random intercepts for each subject
+mix_model <- lmer(Score ~ Year + (1 | ID), data = longi_reshape)
+
+# Summary of the model
+summary(mix_model)
+
+```
+
+```{r}
+# Q-Q plot of residuals to check normality
+qqnorm(residuals(mix_model))
+qqline(residuals(mix_model))
+
+```
+
+
+
+```{r}
+#Homoscedasticity
+# Plot residuals vs fitted values
+plot(fitted(mix_model), residuals(mix_model))
+abline(h = 0, col = "red")
+
+```
+
+
+
+```{r}
+# Autocorrelation plot of residuals
+acf(residuals(mix_model))
+
+```
+
+
+```{r}
+# Model Comparison
+# Simpler model without random effects (for comparison)
+simple_model <- lm(Score ~ Year, data = longi_reshape)
+
+# Compare models using AIC
+AIC(simple_model, mix_model)
+
+```
+```{r}
+#Visualize the Results
+
+# Plot fitted values by year
+ggplot(longi_reshape, aes(x = Year, y = Score)) +
+  geom_point(alpha = 0.3) +
+  geom_line(aes(group = ID), alpha = 0.2) +
+  geom_smooth(aes(group = 1), method = "lm", se = FALSE, color = "red") +
+  labs(title = "Scores by Year", x = "Year", y = "Score")
+```
